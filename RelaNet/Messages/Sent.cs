@@ -238,6 +238,12 @@ namespace RelaNet.Messages
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void WriteSByte(sbyte b)
+        {
+            Bytes.WriteSByte(Data, b, Length); Length++;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void WriteUShort(ushort u)
         {
             Bytes.WriteUShort(Data, u, Length); Length += 2;

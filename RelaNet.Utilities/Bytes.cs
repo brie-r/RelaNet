@@ -6,6 +6,19 @@ namespace RelaNet.Utilities
 {
     public static class Bytes
     {
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void WriteSByte(byte[] msg, sbyte val, int index)
+        {
+            msg[index] = (byte)(val+128);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static sbyte ReadSByte(byte[] msg, int index)
+        {
+            return (sbyte)(msg[index] - 128);
+        }
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void WriteUShort(byte[] msg, ushort val, int index)
         {
