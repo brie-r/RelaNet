@@ -13,8 +13,8 @@ namespace RelaNet.Snapshots.UT.Basic2d
         public List<NetExecutorSnapper> NetSnappers 
             = new List<NetExecutorSnapper>();
 
-        public List<Snapper<NentBasic2d, PackerBasic2d, PackInfoBasic2d>> Nents 
-            = new List<Snapper<NentBasic2d, PackerBasic2d, PackInfoBasic2d>>();
+        public List<Snapper<NentBasic2d, NentStaticBasic2d, PackerBasic2d, PackInfoBasic2d>> Nents 
+            = new List<Snapper<NentBasic2d, NentStaticBasic2d, PackerBasic2d, PackInfoBasic2d>>();
 
         public List<SnapInputManager<InputBasic2d, InputPackerBasic2d>> Inputs 
             = new List<SnapInputManager<InputBasic2d, InputPackerBasic2d>>();
@@ -36,7 +36,7 @@ namespace RelaNet.Snapshots.UT.Basic2d
                     netSnap.AddInputManager(input);
                     Inputs.Add(input);
 
-                    Snapper<NentBasic2d, PackerBasic2d, PackInfoBasic2d> nent =
+                    Snapper<NentBasic2d, NentStaticBasic2d, PackerBasic2d, PackInfoBasic2d> nent =
                         SnapperBasic2d.Make();
                     netSnap.AddSnapper(nent);
                     Nents.Add(nent);

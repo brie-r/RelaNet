@@ -6,7 +6,7 @@ using RelaNet.Utilities;
 
 namespace RelaNet.Snapshots.Basic2d
 {
-    public struct PackerBasic2d : ISnapPacker<NentBasic2d, PackInfoBasic2d>
+    public struct PackerBasic2d : ISnapPacker<NentBasic2d, NentStaticBasic2d, PackInfoBasic2d>
     {
         public const byte DELTA_FLAG_NONE = 0;
         public const byte DELTA_FLAG_X = 1;
@@ -14,9 +14,9 @@ namespace RelaNet.Snapshots.Basic2d
         public const byte DELTA_FLAG_ROT = 4;
         public const byte DELTA_FLAG_XVEL = 8;
         public const byte DELTA_FLAG_YVEL = 16;
-        public const byte DELTA_FLAG_ID1 = 32;
-        public const byte DELTA_FLAG_ID2 = 64;
-        public const byte DELTA_FLAG_FREE1 = 128;
+        public const byte DELTA_FLAG_FREE1 = 32;
+        public const byte DELTA_FLAG_UNUSED1 = 64;
+        public const byte DELTA_FLAG_UNUSED2 = 128;
 
         public void Clear(ref NentBasic2d obj)
         {
@@ -25,49 +25,41 @@ namespace RelaNet.Snapshots.Basic2d
             obj.Rot = 0;
             obj.XVel = 0;
             obj.YVel = 0;
-            obj.Id1 = 0;
-            obj.Id2 = 0;
             obj.Free1 = 0;
         }
 
-        public void PackDelta(Sent sent, PackInfoBasic2d packinfo)
+        public void PackDelta(Sent sent, NentBasic2d obj, PackInfoBasic2d packinfo)
         {
             sent.WriteByte(packinfo.DeltaFlag);
-            if ((packinfo.DeltaFlag & DELTA_FLAG_ID1) != 0)
-                sent.WriteByte(packinfo.Active.Id1);
-
-            if ((packinfo.DeltaFlag & DELTA_FLAG_ID2) != 0)
-                sent.WriteUShort(packinfo.Active.Id2);
-
             if ((packinfo.DeltaFlag & DELTA_FLAG_X) != 0)
-                sent.WriteFloat(packinfo.Active.X);
+                sent.WriteFloat(obj.X);
 
             if ((packinfo.DeltaFlag & DELTA_FLAG_Y) != 0)
-                sent.WriteFloat(packinfo.Active.Y);
+                sent.WriteFloat(obj.Y);
 
             if ((packinfo.DeltaFlag & DELTA_FLAG_ROT) != 0)
-                sent.WriteFloat(packinfo.Active.Rot);
+                sent.WriteFloat(obj.Rot);
 
             if ((packinfo.DeltaFlag & DELTA_FLAG_XVEL) != 0)
-                sent.WriteFloat(packinfo.Active.XVel);
+                sent.WriteFloat(obj.XVel);
 
             if ((packinfo.DeltaFlag & DELTA_FLAG_YVEL) != 0)
-                sent.WriteFloat(packinfo.Active.YVel);
+                sent.WriteFloat(obj.YVel);
 
             if ((packinfo.DeltaFlag & DELTA_FLAG_FREE1) != 0)
-                sent.WriteFloat(packinfo.Active.Free1);
+                sent.WriteFloat(obj.Free1);
         }
 
-        public void PackFull(Sent sent, PackInfoBasic2d packinfo)
+        public void PackFull(Sent sent, NentBasic2d obj, NentStaticBasic2d stat, PackInfoBasic2d packinfo)
         {
-            sent.WriteByte(packinfo.Active.Id1);
-            sent.WriteUShort(packinfo.Active.Id2);
-            sent.WriteFloat(packinfo.Active.X);
-            sent.WriteFloat(packinfo.Active.Y);
-            sent.WriteFloat(packinfo.Active.Rot);
-            sent.WriteFloat(packinfo.Active.XVel);
-            sent.WriteFloat(packinfo.Active.YVel);
-            sent.WriteFloat(packinfo.Active.Free1);
+            sent.WriteByte(stat.Id1);
+            sent.WriteUShort(stat.Id2);
+            sent.WriteFloat(obj.X);
+            sent.WriteFloat(obj.Y);
+            sent.WriteFloat(obj.Rot);
+            sent.WriteFloat(obj.XVel);
+            sent.WriteFloat(obj.YVel);
+            sent.WriteFloat(obj.Free1);
         }
 
         public byte PrepPackDelta(NentBasic2d obj, NentBasic2d basis,
@@ -75,20 +67,7 @@ namespace RelaNet.Snapshots.Basic2d
         {
             byte len = 1;
             packinfo = new PackInfoBasic2d();
-            packinfo.Active = obj;
             packinfo.DeltaFlag = DELTA_FLAG_NONE;
-
-            if (obj.Id1 != basis.Id1)
-            {
-                len++;
-                packinfo.DeltaFlag |= DELTA_FLAG_ID1;
-            }
-
-            if (obj.Id2 != basis.Id2)
-            {
-                len += 2;
-                packinfo.DeltaFlag |= DELTA_FLAG_ID2;
-            }
 
             if (obj.X != basis.X)
             {
@@ -130,34 +109,16 @@ namespace RelaNet.Snapshots.Basic2d
         }
 
         public byte PrepPackFull(NentBasic2d obj,
+            NentStaticBasic2d stat,
             out PackInfoBasic2d packinfo)
         {
             packinfo = new PackInfoBasic2d();
-            packinfo.Active = obj;
             return 1 + 2 + (4 * 6);
         }
 
         public void UnpackDelta(ref NentBasic2d obj, NentBasic2d basis, byte[] blob, int start, int count)
         {
             byte dflag = blob[start]; start++;
-
-            if ((dflag & DELTA_FLAG_ID1) != 0)
-            {
-                obj.Id1 = blob[start]; start++;
-            }
-            else
-            {
-                obj.Id1 = basis.Id1;
-            }
-
-            if ((dflag & DELTA_FLAG_ID2) != 0)
-            {
-                obj.Id2 = Bytes.ReadUShort(blob, start); start += 2;
-            }
-            else
-            {
-                obj.Id2 = basis.Id2;
-            }
 
             if ((dflag & DELTA_FLAG_X) != 0)
             {
@@ -214,10 +175,10 @@ namespace RelaNet.Snapshots.Basic2d
             }
         }
 
-        public void UnpackFull(ref NentBasic2d obj, byte[] blob, int start, int count)
+        public void UnpackFull(ref NentBasic2d obj, ref NentStaticBasic2d stat, byte[] blob, int start, int count)
         {
-            obj.Id1 = blob[start]; start++;
-            obj.Id2 = Bytes.ReadUShort(blob, start); start += 2;
+            stat.Id1 = blob[start]; start++;
+            stat.Id2 = Bytes.ReadUShort(blob, start); start += 2;
             obj.X = Bytes.ReadFloat(blob, start); start += 4;
             obj.Y = Bytes.ReadFloat(blob, start); start += 4;
             obj.Rot = Bytes.ReadFloat(blob, start); start += 4;

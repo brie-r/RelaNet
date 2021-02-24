@@ -4,8 +4,9 @@ using System.Text;
 
 namespace RelaNet.Snapshots.Basic2d
 {
-    public struct PackInfoBasic2d
+    public struct NentStaticBasic2d
     {
-        public byte DeltaFlag;
+        public byte Id1;
+        public ushort Id2;
     }
 }

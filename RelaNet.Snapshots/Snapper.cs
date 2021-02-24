@@ -6,10 +6,11 @@ using System.Text;
 
 namespace RelaNet.Snapshots
 {
-    public class Snapper<T, U, V> : ISnapper 
-        where T : struct                    // entity struct
-        where U : struct, ISnapPacker<T, V> // packer struct 
-        where V : struct                    // packer info struct
+    public class Snapper<TSnap, TStatic, TPacker, TPackInfo> : ISnapper 
+        where TSnap : struct                                           // entity struct
+        where TStatic : struct                                         // static data struct
+        where TPacker : struct, ISnapPacker<TSnap, TStatic, TPackInfo> // packer struct 
+        where TPackInfo : struct                                       // packer info struct
     {
         // Delegates
         /*public delegate void ClearDelegate(ref T obj);
@@ -22,8 +23,8 @@ namespace RelaNet.Snapshots
         public UnpackDeltaDelegate UnpackDeltaAction;
         public ExtrapolateDelegate ExtrapolateAction;*/
 
-        private readonly U Packer;
-        private V PackInfo;
+        private readonly TPacker Packer;
+        private TPackInfo PackInfo;
 
         // defn. Entity Id
         // assigned by NetExecutorSnapper and networked
@@ -31,8 +32,8 @@ namespace RelaNet.Snapshots
         // assigned by Snapper and not networked (used in StructReArrays)
 
         // Entity data
-        public ReArrayIdPool<SnapHistory<T>> FirstData;
-        public ReArrayIdPool<SnapHistory<T>> SecondData;
+        public ReArrayIdPool<SnapHistory<TSnap, TStatic>> FirstData;
+        public ReArrayIdPool<SnapHistory<TSnap, TStatic>> SecondData;
 
         // Entity map
         public int[] FirstEntityIdToInnerId;
@@ -44,15 +45,26 @@ namespace RelaNet.Snapshots
         public NetExecutorSnapper NetSnapper { get; private set; }
         public byte EntityType { get; private set; } = 0;
 
+        // Callbacks
+        //            eid   h                            timestamp
+        public Action<byte, SnapHistory<TSnap, TStatic>, ushort> CallbackFirstGhosted;
+        public Action<ushort, SnapHistory<TSnap, TStatic>, ushort> CallbackSecondGhosted;
+        //            eid   h
+        public Action<byte, SnapHistory<TSnap, TStatic>> CallbackFirstDestroyed;
+        public Action<ushort, SnapHistory<TSnap, TStatic>> CallbackSecondDestroyed;
+
+        private SnapHistory<TSnap, TStatic> TempWriteHistory;
+        private int TempWriteIndex;
+
         public Snapper(int firstWindowLength = 64, int secondWindowLength = 32)
         {
-            Packer = new U();
+            Packer = new TPacker();
 
             // setup entity data
-            FirstData = new ReArrayIdPool<SnapHistory<T>>(4, byte.MaxValue + 1,
+            FirstData = new ReArrayIdPool<SnapHistory<TSnap, TStatic>>(4, byte.MaxValue + 1,
                 () =>
                 {
-                    return new SnapHistory<T>(firstWindowLength, true);
+                    return new SnapHistory<TSnap, TStatic>(firstWindowLength, true);
                 },
                 (s) =>
                 {
@@ -61,10 +73,10 @@ namespace RelaNet.Snapshots
                     s.Clear();
                 });
 
-            SecondData = new ReArrayIdPool<SnapHistory<T>>(4, ushort.MaxValue + 1,
+            SecondData = new ReArrayIdPool<SnapHistory<TSnap, TStatic>>(4, ushort.MaxValue + 1,
                 () =>
                 {
-                    return new SnapHistory<T>(secondWindowLength, false);
+                    return new SnapHistory<TSnap, TStatic>(secondWindowLength, false);
                 },
                 (s) =>
                 {
@@ -144,10 +156,13 @@ namespace RelaNet.Snapshots
             if (innerid == -1)
                 return 0;
 
-            SnapHistory<T> h = FirstData.Values[FirstData.IdsToIndices[innerid]];
+            SnapHistory<TSnap, TStatic> h = FirstData.Values[FirstData.IdsToIndices[innerid]];
+
+            TempWriteHistory = h;
+            TempWriteIndex = h.FindIndex(timestamp);
 
             return Packer.PrepPackFull(
-                h.Shots[h.FindIndex(timestamp)], out PackInfo);
+                h.Shots[TempWriteIndex], h.StaticData, out PackInfo);
         }
 
         public byte PrepGhostSecond(ushort entityid, ushort timestamp)
@@ -161,20 +176,29 @@ namespace RelaNet.Snapshots
             if (innerid == -1)
                 return 0;
 
-            SnapHistory<T> h = SecondData.Values[SecondData.IdsToIndices[innerid]];
+            SnapHistory<TSnap, TStatic> h = SecondData.Values[SecondData.IdsToIndices[innerid]];
+
+            TempWriteHistory = h;
+            TempWriteIndex = h.FindIndex(timestamp);
 
             return Packer.PrepPackFull(
-                h.Shots[h.FindIndex(timestamp)], out PackInfo);
+                h.Shots[TempWriteIndex], h.StaticData, out PackInfo);
         }
 
         public void WriteGhostFirst(Sent sent)
         {
-            Packer.PackFull(sent, PackInfo);
+            Packer.PackFull(sent,
+                TempWriteHistory.Shots[TempWriteIndex],
+                TempWriteHistory.StaticData,
+                PackInfo);
         }
 
         public void WriteGhostSecond(Sent sent)
         {
-            Packer.PackFull(sent, PackInfo);
+            Packer.PackFull(sent,
+                TempWriteHistory.Shots[TempWriteIndex],
+                TempWriteHistory.StaticData,
+                PackInfo);
         }
 
 
@@ -195,7 +219,7 @@ namespace RelaNet.Snapshots
             if (innerid == -1)
                 return false;
 
-            SnapHistory<T> h = FirstData.Values[FirstData.IdsToIndices[innerid]];
+            SnapHistory<TSnap, TStatic> h = FirstData.Values[FirstData.IdsToIndices[innerid]];
 
             int index = h.FindIndex(timestamp);
             if (index == -1)
@@ -204,6 +228,9 @@ namespace RelaNet.Snapshots
             int basisIndex = h.FindIndex(basisTimestamp);
             if (basisIndex == -1)
                 return false;
+
+            TempWriteHistory = h;
+            TempWriteIndex = index;
 
             len = Packer.PrepPackDelta(
                 h.Shots[index],
@@ -227,7 +254,7 @@ namespace RelaNet.Snapshots
             if (innerid == -1)
                 return false;
 
-            SnapHistory<T> h = SecondData.Values[SecondData.IdsToIndices[innerid]];
+            SnapHistory<TSnap, TStatic> h = SecondData.Values[SecondData.IdsToIndices[innerid]];
 
             int index = h.FindIndex(timestamp);
             if (index == -1)
@@ -236,6 +263,9 @@ namespace RelaNet.Snapshots
             int basisIndex = h.FindIndex(basisTimestamp);
             if (basisIndex == -1)
                 return false;
+
+            TempWriteHistory = h;
+            TempWriteIndex = index;
 
             len = Packer.PrepPackDelta(
                 h.Shots[index],
@@ -247,12 +277,16 @@ namespace RelaNet.Snapshots
 
         public void WriteDeltaFirst(Sent sent)
         {
-            Packer.PackDelta(sent, PackInfo);
+            Packer.PackDelta(sent,
+                TempWriteHistory.Shots[TempWriteIndex],
+                PackInfo);
         }
 
         public void WriteDeltaSecond(Sent sent)
         {
-            Packer.PackDelta(sent, PackInfo);
+            Packer.PackDelta(sent,
+                TempWriteHistory.Shots[TempWriteIndex],
+                PackInfo);
         }
 
 
@@ -275,11 +309,17 @@ namespace RelaNet.Snapshots
             if (FirstData.Count > byte.MaxValue)
                 return false;
 
-            FirstEntityIdToInnerId[entityid] = 
+
+            int innerid = 
                 (byte)Ghost(FirstData,
                     entityid,
                     blob, blobstart, blobcount,
                     timestamp);
+
+            FirstEntityIdToInnerId[entityid] = innerid;
+
+            if (CallbackFirstGhosted != null)
+                CallbackFirstGhosted(entityid, FirstData.Values[FirstData.IdsToIndices[innerid]], timestamp);
 
             return true;
         }
@@ -300,27 +340,32 @@ namespace RelaNet.Snapshots
 
             if (SecondData.Count > ushort.MaxValue)
                 return false;
-
-            SecondEntityIdToInnerId[entityid] = 
+            
+            int innerid = 
                 (ushort)Ghost(SecondData,
                     entityid,
                     blob, blobstart, blobcount,
                     timestamp);
 
+            SecondEntityIdToInnerId[entityid] = innerid;
+
+            if (CallbackSecondGhosted != null)
+                CallbackSecondGhosted(entityid, SecondData.Values[SecondData.IdsToIndices[innerid]], timestamp);
+
             return true;
         }
 
-        private int Ghost(ReArrayIdPool<SnapHistory<T>> data,
+        private int Ghost(ReArrayIdPool<SnapHistory<TSnap, TStatic>> data,
             ushort entityid,
             byte[] blob, int blobstart, int blobcount,
             ushort timestamp)
         {
-            SnapHistory<T> sh = data.Request();
+            SnapHistory<TSnap, TStatic> sh = data.Request();
 
             sh.EntityId = entityid;
-            Packer.UnpackFull(ref sh.Shots[0], blob, blobstart, blobcount);
+            Packer.UnpackFull(ref sh.Shots[0], ref sh.StaticData, blob, blobstart, blobcount);
             sh.Timestamps[0] = timestamp;
-            sh.Flags[0] = SnapHistory<T>.FlagGold;
+            sh.Flags[0] = SnapHistory<TSnap, TStatic>.FlagGold;
             sh.LeadingIndex = 0;
 
             // now, figure how close we are to current time
@@ -337,7 +382,7 @@ namespace RelaNet.Snapshots
                 // received. This can obviously create issues since we'll
                 // need a full snapshot again.
                 sh.Timestamps[0] = CurrentTime;
-                sh.Flags[0] = SnapHistory<T>.FlagEmpty;
+                sh.Flags[0] = SnapHistory<TSnap, TStatic>.FlagEmpty;
             }
             else
             {
@@ -411,20 +456,20 @@ namespace RelaNet.Snapshots
             return UnpackFull(SecondData, innerid, blob, blobstart, blobcount, timestamp);
         }
 
-        private bool UnpackFull(ReArrayIdPool<SnapHistory<T>> data,
+        private bool UnpackFull(ReArrayIdPool<SnapHistory<TSnap, TStatic>> data,
             int innerid,
             byte[] blob, int blobstart, int blobcount,
             ushort timestamp)
         {
-            SnapHistory<T> sh = data.Values[data.IdsToIndices[innerid]];
+            SnapHistory<TSnap, TStatic> sh = data.Values[data.IdsToIndices[innerid]];
             
             int index = sh.FindIndex(timestamp);
             if (index < 0)
                 return false; // out of bounds-- too far in future or past
 
-            Packer.UnpackFull(ref sh.Shots[index], blob, blobstart, blobcount);
+            Packer.UnpackFull(ref sh.Shots[index], ref sh.StaticData, blob, blobstart, blobcount);
             sh.Timestamps[index] = timestamp;
-            sh.Flags[index] = SnapHistory<T>.FlagGold;
+            sh.Flags[index] = SnapHistory<TSnap, TStatic>.FlagGold;
 
             // handle flag rollover
             Rollover(sh, index, timestamp);
@@ -432,7 +477,7 @@ namespace RelaNet.Snapshots
             return true;
         }
 
-        private void Rollover(SnapHistory<T> sh, int index, ushort timestamp)
+        private void Rollover(SnapHistory<TSnap, TStatic> sh, int index, ushort timestamp)
         {
             // this whole idea has to be reworked
             // I guess an issue is that one of our key assumptions
@@ -470,7 +515,7 @@ namespace RelaNet.Snapshots
                 nextTime++;
 
             // we can only rollover onto silver flags
-            if (sh.Flags[nindex] != SnapHistory<T>.FlagSilver && sh.Flags[nindex] != SnapHistory<T>.FlagEmpty)
+            if (sh.Flags[nindex] != SnapHistory<TSnap, TStatic>.FlagSilver && sh.Flags[nindex] != SnapHistory<TSnap, TStatic>.FlagEmpty)
                 return;
 
             // can only rollover onto subsequent timestamps
@@ -564,12 +609,12 @@ namespace RelaNet.Snapshots
             return UnpackDelta(SecondData, innerid, blob, blobstart, blobcount, timestamp, basisTimestamp);
         }
 
-        private bool UnpackDelta(ReArrayIdPool<SnapHistory<T>> data,
+        private bool UnpackDelta(ReArrayIdPool<SnapHistory<TSnap, TStatic>> data,
             int innerid,
             byte[] blob, int blobstart, int blobcount,
             ushort timestamp, ushort basisTimestamp)
         {
-            SnapHistory<T> sh = data.Values[data.IdsToIndices[innerid]];
+            SnapHistory<TSnap, TStatic> sh = data.Values[data.IdsToIndices[innerid]];
 
             int index = sh.FindIndex(timestamp);
             if (index < 0 || index >= sh.Shots.Length)
@@ -581,7 +626,7 @@ namespace RelaNet.Snapshots
 
             Packer.UnpackDelta(ref sh.Shots[index], sh.Shots[basisIndex], blob, blobstart, blobcount);
             sh.Timestamps[index] = timestamp;
-            sh.Flags[index] = SnapHistory<T>.FlagGold;
+            sh.Flags[index] = SnapHistory<TSnap, TStatic>.FlagGold;
 
             // handle flag rollover
             Rollover(sh, index, timestamp);
@@ -620,16 +665,16 @@ namespace RelaNet.Snapshots
             return Deghost(SecondData, innerid, timestamp);
         }
 
-        private bool Deghost(ReArrayIdPool<SnapHistory<T>> data,
+        private bool Deghost(ReArrayIdPool<SnapHistory<TSnap, TStatic>> data,
             int innerid, ushort timestamp)
         {
-            SnapHistory<T> sh = data.Values[data.IdsToIndices[innerid]];
+            SnapHistory<TSnap, TStatic> sh = data.Values[data.IdsToIndices[innerid]];
 
             int index = sh.FindIndex(timestamp);
             if (index < 0 || index >= sh.Shots.Length)
                 return false; // out of bounds
 
-            sh.Flags[index] = SnapHistory<T>.FlagDeghosted;
+            sh.Flags[index] = SnapHistory<TSnap, TStatic>.FlagDeghosted;
 
             // scroll forward and deghost subsequent timestamps!
 
@@ -650,7 +695,7 @@ namespace RelaNet.Snapshots
                     nextTime++;
 
                 // we can only rollover onto silver flags
-                if (sh.Flags[nindex] != SnapHistory<T>.FlagSilver && sh.Flags[nindex] != SnapHistory<T>.FlagEmpty)
+                if (sh.Flags[nindex] != SnapHistory<TSnap, TStatic>.FlagSilver && sh.Flags[nindex] != SnapHistory<TSnap, TStatic>.FlagEmpty)
                     break;
 
                 // can only rollover onto subsequent timestamps
@@ -658,7 +703,7 @@ namespace RelaNet.Snapshots
                     break;
 
                 // now we're ready to roll
-                sh.Flags[nindex] = SnapHistory<T>.FlagDeghosted;
+                sh.Flags[nindex] = SnapHistory<TSnap, TStatic>.FlagDeghosted;
 
                 nindex++;
             }
@@ -680,6 +725,9 @@ namespace RelaNet.Snapshots
             if (innerid == -1)
                 return false;
 
+            if (CallbackFirstDestroyed != null)
+                CallbackFirstDestroyed(entityid, FirstData.Values[FirstData.IdsToIndices[innerid]]);
+
             FirstData.ReturnId(innerid);
             FirstEntityIdToInnerId[entityid] = -1;
             return true;
@@ -695,6 +743,9 @@ namespace RelaNet.Snapshots
             int innerid = SecondEntityIdToInnerId[entityid];
             if (innerid == -1)
                 return false;
+
+            if (CallbackSecondDestroyed != null)
+                CallbackSecondDestroyed(entityid, SecondData.Values[SecondData.IdsToIndices[innerid]]);
 
             SecondData.ReturnId(innerid);
             SecondEntityIdToInnerId[entityid] = -1;
@@ -713,7 +764,7 @@ namespace RelaNet.Snapshots
             // when we advance, push every leading edge forward
             for (int i = 0; i < FirstData.Count; i++)
             {
-                SnapHistory<T> sh = FirstData.Values[i];
+                SnapHistory<TSnap, TStatic> sh = FirstData.Values[i];
                 ushort last = sh.Timestamps[sh.LeadingIndex];
                 ushort next = last == ushort.MaxValue ? (ushort)0 : (ushort)(last + 1);
                 int startIndex = sh.LeadingIndex;
@@ -727,7 +778,7 @@ namespace RelaNet.Snapshots
                     // we haven't received the next snap yet, so destroy it and 
                     // ensure that it is empty for the simulator
                     sh.Timestamps[sh.LeadingIndex] = next;
-                    sh.Flags[sh.LeadingIndex] = SnapHistory<T>.FlagEmpty;
+                    sh.Flags[sh.LeadingIndex] = SnapHistory<TSnap, TStatic>.FlagEmpty;
 
                     // note: we don't need to actually call Clear on the snapshot
                     // since the fact that it's marked with an empty flag means
@@ -735,8 +786,8 @@ namespace RelaNet.Snapshots
 
                     // if the previous snapshot was deghosted,
                     // deghost this one as well.
-                    if (sh.Flags[startIndex] == SnapHistory<T>.FlagDeghosted)
-                        sh.Flags[sh.LeadingIndex] = SnapHistory<T>.FlagDeghosted;
+                    if (sh.Flags[startIndex] == SnapHistory<TSnap, TStatic>.FlagDeghosted)
+                        sh.Flags[sh.LeadingIndex] = SnapHistory<TSnap, TStatic>.FlagDeghosted;
                 }
             }
 
@@ -745,7 +796,7 @@ namespace RelaNet.Snapshots
             // calls seems like a waste.
             for (int i = 0; i < SecondData.Count; i++)
             {
-                SnapHistory<T> sh = SecondData.Values[i];
+                SnapHistory<TSnap, TStatic> sh = SecondData.Values[i];
                 ushort last = sh.Timestamps[sh.LeadingIndex];
                 ushort next = last == ushort.MaxValue ? (ushort)0 : (ushort)(last + 1);
                 int startIndex = sh.LeadingIndex;
@@ -757,10 +808,10 @@ namespace RelaNet.Snapshots
                 if (sh.Timestamps[sh.LeadingIndex] != next)
                 {
                     sh.Timestamps[sh.LeadingIndex] = next;
-                    sh.Flags[sh.LeadingIndex] = SnapHistory<T>.FlagEmpty;
+                    sh.Flags[sh.LeadingIndex] = SnapHistory<TSnap, TStatic>.FlagEmpty;
                     
-                    if (sh.Flags[startIndex] == SnapHistory<T>.FlagDeghosted)
-                        sh.Flags[sh.LeadingIndex] = SnapHistory<T>.FlagDeghosted;
+                    if (sh.Flags[startIndex] == SnapHistory<TSnap, TStatic>.FlagDeghosted)
+                        sh.Flags[sh.LeadingIndex] = SnapHistory<TSnap, TStatic>.FlagDeghosted;
                 }
             }
         }
@@ -886,9 +937,9 @@ namespace RelaNet.Snapshots
 
 
         // Simulant Helpers
-        public void ServerSaveSimIntoCurrent(SnapHistory<T> ent)
+        public void ServerSaveSimIntoCurrent(SnapHistory<TSnap, TStatic> ent)
         {  
-            ent.Flags[ent.CurrentIndex] = SnapHistory<T>.FlagGold;
+            ent.Flags[ent.CurrentIndex] = SnapHistory<TSnap, TStatic>.FlagGold;
 
             if (ent.First)
             {
@@ -900,15 +951,15 @@ namespace RelaNet.Snapshots
             }
         }
 
-        public void ClientSaveSimIntoCurrent(SnapHistory<T> ent)
+        public void ClientSaveSimIntoCurrent(SnapHistory<TSnap, TStatic> ent)
         {
-            ent.Flags[ent.CurrentIndex] = SnapHistory<T>.FlagSilver;
+            ent.Flags[ent.CurrentIndex] = SnapHistory<TSnap, TStatic>.FlagSilver;
         }
 
 
         
         // Entity Management Methods
-        public bool ServerAddEntityFirst(T initalSnap, out byte eid, bool ghostAll = true)
+        public bool ServerAddEntityFirst(TSnap initalSnap, out byte eid, bool ghostAll = true)
         {
             if (!NetSnapper.ServerRequestEntityFirst(EntityType, out eid))
             {
@@ -918,10 +969,10 @@ namespace RelaNet.Snapshots
             if (FirstEntityIdToInnerId.Length <= eid)
                 ExpandFirstEntityIdMap(eid);
 
-            SnapHistory<T> h = FirstData.Request();
+            SnapHistory<TSnap, TStatic> h = FirstData.Request();
             h.EntityId = eid;
             h.Timestamps[0] = NetSnapper.CurrentTime;
-            h.Flags[0] = SnapHistory<T>.FlagGold;
+            h.Flags[0] = SnapHistory<TSnap, TStatic>.FlagGold;
             h.LeadingIndex = 0;
             h.Shots[0] = initalSnap;
 
@@ -936,7 +987,7 @@ namespace RelaNet.Snapshots
             return true;
         }
 
-        public bool ServerAddEntitySecond(T initalSnap, out ushort eid, bool ghostAll = true)
+        public bool ServerAddEntitySecond(TSnap initalSnap, out ushort eid, bool ghostAll = true)
         {
             if (!NetSnapper.ServerRequestEntitySecond(EntityType, out eid))
             {
@@ -946,10 +997,10 @@ namespace RelaNet.Snapshots
             if (SecondEntityIdToInnerId.Length <= eid)
                 ExpandSecondEntityIdMap(eid);
 
-            SnapHistory<T> h = SecondData.Request();
+            SnapHistory<TSnap, TStatic> h = SecondData.Request();
             h.EntityId = eid;
             h.Timestamps[0] = NetSnapper.CurrentTime;
-            h.Flags[0] = SnapHistory<T>.FlagGold;
+            h.Flags[0] = SnapHistory<TSnap, TStatic>.FlagGold;
             h.LeadingIndex = 0;
             h.Shots[0] = initalSnap;
 
@@ -964,7 +1015,7 @@ namespace RelaNet.Snapshots
             return true;
         }
 
-        public SnapHistory<T> GetFirstEntity(byte eid)
+        public SnapHistory<TSnap, TStatic> GetFirstEntity(byte eid)
         {
             if (FirstEntityIdToInnerId.Length < eid
                 || FirstEntityIdToInnerId[eid] == -1)
@@ -972,7 +1023,7 @@ namespace RelaNet.Snapshots
             return FirstData.Values[FirstData.IdsToIndices[FirstEntityIdToInnerId[eid]]];
         }
 
-        public SnapHistory<T> GetSecondEntity(ushort eid)
+        public SnapHistory<TSnap, TStatic> GetSecondEntity(ushort eid)
         {
             if (SecondEntityIdToInnerId.Length <= eid
                 || SecondEntityIdToInnerId[eid] == -1)

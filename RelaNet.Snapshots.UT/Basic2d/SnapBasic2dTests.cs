@@ -37,7 +37,7 @@ namespace RelaNet.Snapshots.UT.Basic2d
 
             ushort timeChecked = senv.NetSnappers[0].CurrentTime;
             int diff = timeChecked - timeAdded;
-            Snapper<NentBasic2d, PackerBasic2d, PackInfoBasic2d> checkNent =
+            Snapper<NentBasic2d, NentStaticBasic2d, PackerBasic2d, PackInfoBasic2d> checkNent =
                 senv.Nents[0];
 
             senv.FastTick(); // allow extra time to be sure the clients
@@ -47,18 +47,18 @@ namespace RelaNet.Snapshots.UT.Basic2d
             for (int c = 1; c < senv.NetSnappers.Count; c++)
             {
                 NetExecutorSnapper ns = senv.NetSnappers[c];
-                Snapper<NentBasic2d, PackerBasic2d, PackInfoBasic2d> nent = senv.Nents[c];
+                Snapper<NentBasic2d, NentStaticBasic2d, PackerBasic2d, PackInfoBasic2d> nent = senv.Nents[c];
 
                 for (int i = 0; i < eids.Count; i++)
                 {
                     byte eid = eids[i];
 
                     // pull the entity from the source so we can compare
-                    SnapHistory<NentBasic2d> checkH = checkNent.GetFirstEntity(eid);
+                    SnapHistory<NentBasic2d, NentStaticBasic2d> checkH = checkNent.GetFirstEntity(eid);
                     Assert.AreNotEqual(null, checkH);
 
                     // does this ent exist?
-                    SnapHistory<NentBasic2d> h = nent.GetFirstEntity(eid);
+                    SnapHistory<NentBasic2d, NentStaticBasic2d> h = nent.GetFirstEntity(eid);
                     Assert.AreNotEqual(null, h);
 
                     // do we have snapshots for the original timestamp?
@@ -111,7 +111,7 @@ namespace RelaNet.Snapshots.UT.Basic2d
 
             ushort nextTimeChecked = 0;
             ushort timeChecked = senv.NetSnappers[0].CurrentTime;
-            Snapper<NentBasic2d, PackerBasic2d, PackInfoBasic2d> checkNent =
+            Snapper<NentBasic2d, NentStaticBasic2d, PackerBasic2d, PackInfoBasic2d> checkNent =
                 senv.Nents[0];
 
             for (int r = 0; r < runs; r++)
@@ -124,18 +124,18 @@ namespace RelaNet.Snapshots.UT.Basic2d
                 for (int c = 1; c < senv.NetSnappers.Count; c++)
                 {
                     NetExecutorSnapper ns = senv.NetSnappers[c];
-                    Snapper<NentBasic2d, PackerBasic2d, PackInfoBasic2d> nent = senv.Nents[c];
+                    Snapper<NentBasic2d, NentStaticBasic2d, PackerBasic2d, PackInfoBasic2d> nent = senv.Nents[c];
 
                     for (int i = 0; i < eids.Count; i++)
                     {
                         byte eid = eids[i];
 
                         // pull the entity from the source so we can compare
-                        SnapHistory<NentBasic2d> checkH = checkNent.GetFirstEntity(eid);
+                        SnapHistory<NentBasic2d, NentStaticBasic2d> checkH = checkNent.GetFirstEntity(eid);
                         Assert.AreNotEqual(null, checkH);
 
                         // does this ent exist?
-                        SnapHistory<NentBasic2d> h = nent.GetFirstEntity(eid);
+                        SnapHistory<NentBasic2d, NentStaticBasic2d> h = nent.GetFirstEntity(eid);
                         Assert.AreNotEqual(null, h);
                         
                         // do we have snapshots for the latest timestamp?
@@ -196,7 +196,7 @@ namespace RelaNet.Snapshots.UT.Basic2d
 
             ushort nextTimeChecked = 0;
             ushort timeChecked = senv.NetSnappers[0].CurrentTime;
-            Snapper<NentBasic2d, PackerBasic2d, PackInfoBasic2d> checkNent =
+            Snapper<NentBasic2d, NentStaticBasic2d, PackerBasic2d, PackInfoBasic2d> checkNent =
                 senv.Nents[0];
 
             for (int r = 0; r < runs; r++)
@@ -209,18 +209,18 @@ namespace RelaNet.Snapshots.UT.Basic2d
                 for (int c = 1; c < senv.NetSnappers.Count; c++)
                 {
                     NetExecutorSnapper ns = senv.NetSnappers[c];
-                    Snapper<NentBasic2d, PackerBasic2d, PackInfoBasic2d> nent = senv.Nents[c];
+                    Snapper<NentBasic2d, NentStaticBasic2d, PackerBasic2d, PackInfoBasic2d> nent = senv.Nents[c];
 
                     for (int i = 0; i < eids.Count; i++)
                     {
                         byte eid = eids[i];
 
                         // pull the entity from the source so we can compare
-                        SnapHistory<NentBasic2d> checkH = checkNent.GetFirstEntity(eid);
+                        SnapHistory<NentBasic2d, NentStaticBasic2d> checkH = checkNent.GetFirstEntity(eid);
                         Assert.AreNotEqual(null, checkH);
 
                         // does this ent exist?
-                        SnapHistory<NentBasic2d> h = nent.GetFirstEntity(eid);
+                        SnapHistory<NentBasic2d, NentStaticBasic2d> h = nent.GetFirstEntity(eid);
                         Assert.AreNotEqual(null, h);
 
                         // do we have snapshots for the latest timestamp?
@@ -240,11 +240,11 @@ namespace RelaNet.Snapshots.UT.Basic2d
                         ushort eid = secondeids[i];
 
                         // pull the entity from the source so we can compare
-                        SnapHistory<NentBasic2d> checkH = checkNent.GetSecondEntity(eid);
+                        SnapHistory<NentBasic2d, NentStaticBasic2d> checkH = checkNent.GetSecondEntity(eid);
                         Assert.AreNotEqual(null, checkH);
 
                         // does this ent exist?
-                        SnapHistory<NentBasic2d> h = nent.GetSecondEntity(eid);
+                        SnapHistory<NentBasic2d, NentStaticBasic2d> h = nent.GetSecondEntity(eid);
                         Assert.AreNotEqual(null, h);
 
                         // do we have snapshots for the latest timestamp?

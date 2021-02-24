@@ -24,13 +24,14 @@ namespace RelaNet
         public const ushort EventNewClient = 2;
         public const ushort EventLostClient = 3;
         public const ushort EventHeartbeat = 4;
-        public const ushort EventAck = 5;
-        public const ushort EventChangeMaxPlayers = 6;
+        public const ushort EventEmptyHeartbeat = 5; // could call this "Heartbreak"
+        public const ushort EventAck = 6;
+        public const ushort EventChangeMaxPlayers = 7;
 
         // Executors process messages that the server receives
         public INetExecutor[] Executors = new INetExecutor[4];
         public int ExecutorCount = 0;
-        private ushort ExecutorEventCount = 7; // <-- This must be equal to 1 + the highest value
+        private ushort ExecutorEventCount = 8; // <-- This must be equal to 1 + the highest value
                                                // default event (EventChangeMaxPlayers at time of writing)
         private ushort[] ExecutorEventStart = new ushort[4];
 
@@ -62,6 +63,8 @@ namespace RelaNet
                                                           // amount of time, remove the client
         private float TimeSinceHeartbeat = 0;
         public float TimeSinceHeartbeatMax = 1000; // how often to send a heartbeat message
+        private float[] TimeSinceAck;
+        public float TimeSinceAckMax = 1000; // how often to send an Ack by default
         public float TimeSinceResends = 0; // time between resending old messages
         public float TimeSinceResendsMax = 15;
         
@@ -178,6 +181,7 @@ namespace RelaNet
             OurLastAckmids = new ushort[2];
 
             TimeSinceReceivedPlayer = new float[1];
+            TimeSinceAck = new float[1];
             CurrentReliablePlayerSent = new Sent[1];
             CurrentFastOrderedPlayerSent = new Sent[1];
 
@@ -311,17 +315,19 @@ namespace RelaNet
 
             if (IsHost)
             {
-                for (int i = 1; i < TimeSinceReceivedPlayer.Length; i++)
+                for (int i = 0; i < PlayerInfos.Count; i++)
                 {
                     // make sure this player exists before we time for them
-                    if (!PlayerInfos.Values[PlayerInfos.IdsToIndices[i]].Active)
+                    if (!PlayerInfos.Values[i].Active)
                         continue;
 
-                    TimeSinceReceivedPlayer[i] += elapsedms;
+                    byte ipid = (byte)PlayerInfos.IndicesToIds[i];
 
-                    if (TimeSinceReceivedPlayer[i] >= TimeSinceReceivedPlayerMax)
+                    TimeSinceReceivedPlayer[ipid] += elapsedms;
+
+                    if (TimeSinceReceivedPlayer[ipid] >= TimeSinceReceivedPlayerMax)
                     {
-                        RemovePlayer((byte)i, "Connection inactivity");
+                        RemovePlayer(ipid, "Connection inactivity");
                     }
                 }
             }
@@ -437,6 +443,23 @@ namespace RelaNet
             {
                 TimeSinceHeartbeat = 0;
                 SendHeartbeat();
+            }
+
+            // send ack regularly
+            for (int i = 0; i < PlayerInfos.Count; i++)
+            {
+                // make sure this player exists before we time for them
+                if (!PlayerInfos.Values[i].Active)
+                    continue;
+
+                byte ipid = (byte)PlayerInfos.IndicesToIds[i];
+
+                TimeSinceAck[ipid] += elapsedms;
+
+                if (TimeSinceAck[ipid] >= TimeSinceAckMax)
+                {
+                    SendAck(ipid);
+                }
             }
 
             // handle posttick for each executor
@@ -826,6 +849,10 @@ namespace RelaNet
                             lastmid = mid;
                         }
                         continue;
+                    }
+                    else if (eventid == EventEmptyHeartbeat)
+                    {
+                        continue; // empty heartbeat has nothing inside it
                     }
                     else if (eventid == EventAck)
                     {
@@ -1491,6 +1518,16 @@ namespace RelaNet
             }
             TimeSinceReceivedPlayer[pinfoindex] = 0;
 
+            while (TimeSinceAck.Length <= pinfoindex)
+            {
+                // must expand
+                float[] ntime = new float[TimeSinceAck.Length * 2];
+                for (int i = 0; i < TimeSinceAck.Length; i++)
+                    ntime[i] = TimeSinceAck[i];
+                TimeSinceAck = ntime;
+            }
+            TimeSinceAck[pinfoindex] = 0;
+
             while  (CurrentReliablePlayerSent.Length <= pinfoindex)
             {
                 // must expand
@@ -2051,6 +2088,8 @@ namespace RelaNet
 
         public void SendAck(byte pid)
         {
+            TimeSinceAck[pid] = 0;
+
             ushort[] precs = PlayerReceipts[pid];
 
             int acklen = (2 * (PlayerMessagesSinceAckMax / 8));
@@ -2293,7 +2332,14 @@ namespace RelaNet
 
                 int latest = PlayerLastReceivedMessageId[pinfo.PlayerId];
                 if (latest == -1)
-                    continue; // no received messages from this player yet
+                {
+                    // no received messages from this player yet
+                    // we can only send an empty heartbeat
+                    Sent esend = BeginNewSend(SpecialIsImmediate);
+                    esend.WriteUShort(EventEmptyHeartbeat);
+                    SendImmediate(esend, pinfo);
+                    continue; 
+                }
 
                 Sent send = BeginNewSend(SpecialIsImmediate);
 

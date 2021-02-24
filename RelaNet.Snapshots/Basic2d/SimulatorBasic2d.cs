@@ -9,7 +9,7 @@ namespace RelaNet.Snapshots.Basic2d
     {
         public NetServer Server;
         public SnapInputManager<InputBasic2d, InputPackerBasic2d> Input;
-        public Snapper<NentBasic2d, PackerBasic2d, PackInfoBasic2d> Nents;
+        public Snapper<NentBasic2d, NentStaticBasic2d, PackerBasic2d, PackInfoBasic2d> Nents;
 
         private NetExecutorSnapper NetSnapper;
 
@@ -34,7 +34,7 @@ namespace RelaNet.Snapshots.Basic2d
 
         public SimulatorBasic2d(
             SnapInputManager<InputBasic2d, InputPackerBasic2d> input,
-            Snapper<NentBasic2d, PackerBasic2d, PackInfoBasic2d> nents)
+            Snapper<NentBasic2d, NentStaticBasic2d, PackerBasic2d, PackInfoBasic2d> nents)
         {
             Input = input;
             Nents = nents;
@@ -54,21 +54,21 @@ namespace RelaNet.Snapshots.Basic2d
             {
                 for (int i = 0; i < Nents.FirstData.Count; i++)
                 {
-                    SnapHistory<NentBasic2d> h = Nents.FirstData.Values[i];
+                    SnapHistory<NentBasic2d, NentStaticBasic2d> h = Nents.FirstData.Values[i];
 
-                    if (h.PrevFlag == SnapHistory<NentBasic2d>.FlagEmpty
-                        || h.PrevFlag == SnapHistory<NentBasic2d>.FlagDeghosted)
+                    if (h.PrevFlag == SnapHistory<NentBasic2d, NentStaticBasic2d>.FlagEmpty
+                        || h.PrevFlag == SnapHistory<NentBasic2d, NentStaticBasic2d>.FlagDeghosted)
                         continue; // if the prev flag is empty, this entity does 
                                   // not exist yet
 
                     // check to see if this is one of our player objects,
                     // if so, we resimulate it according to our inputs
                     bool skipAdvancement = false;
-                    if (h.Shots[h.PrevIndex].Id2 == NENT_PLAYEROBJ)
+                    if (h.StaticData.Id2 == NENT_PLAYEROBJ)
                     {                        
                         // store the player entities so we know which entity belongs
                         // to which player
-                        PlayerEntityIds[h.Shots[h.PrevIndex].Id1] = (byte)h.EntityId;
+                        PlayerEntityIds[h.StaticData.Id1] = (byte)h.EntityId;
 
                         // we'll only have inputs if it is our player object
                         // since we don't receive inputs for other players
@@ -83,7 +83,7 @@ namespace RelaNet.Snapshots.Basic2d
                     
                     if (!skipAdvancement)
                     {
-                        if (h.CurrentFlag == SnapHistory<NentBasic2d>.FlagGold)
+                        if (h.CurrentFlag == SnapHistory<NentBasic2d, NentStaticBasic2d>.FlagGold)
                             continue; // if we already have a gold from the server,
                                       // there is no purpose in resimulating.
 
@@ -96,7 +96,7 @@ namespace RelaNet.Snapshots.Basic2d
                         // if not, we need to Advance from Prev to Current
 
                         // check Next
-                        if (h.NextFlag != SnapHistory<NentBasic2d>.FlagGold)
+                        if (h.NextFlag != SnapHistory<NentBasic2d, NentStaticBasic2d>.FlagGold)
                         {
                             // we don't have gold ahead of us, so we must 
                             // simulate the current snapshot from previous
@@ -116,16 +116,16 @@ namespace RelaNet.Snapshots.Basic2d
 
                 for (int i = 0; i < Nents.SecondData.Count; i++)
                 {
-                    SnapHistory<NentBasic2d> h = Nents.SecondData.Values[i];
+                    SnapHistory<NentBasic2d, NentStaticBasic2d> h = Nents.SecondData.Values[i];
 
-                    if (h.PrevFlag == SnapHistory<NentBasic2d>.FlagEmpty
-                        || h.PrevFlag == SnapHistory<NentBasic2d>.FlagDeghosted)
+                    if (h.PrevFlag == SnapHistory<NentBasic2d, NentStaticBasic2d>.FlagEmpty
+                        || h.PrevFlag == SnapHistory<NentBasic2d, NentStaticBasic2d>.FlagDeghosted)
                         continue;
 
-                    if (h.CurrentFlag == SnapHistory<NentBasic2d>.FlagGold)
+                    if (h.CurrentFlag == SnapHistory<NentBasic2d, NentStaticBasic2d>.FlagGold)
                         continue; 
 
-                    if (h.NextFlag != SnapHistory<NentBasic2d>.FlagGold)
+                    if (h.NextFlag != SnapHistory<NentBasic2d, NentStaticBasic2d>.FlagGold)
                     {
                         h.Shots[h.CurrentIndex] = h.Shots[h.PrevIndex];
                         AdvanceLogic(h, NetSnapper.TickMSTarget);
@@ -145,14 +145,14 @@ namespace RelaNet.Snapshots.Basic2d
             // now advance to TickMS
             for (int i = 0; i < Nents.FirstData.Count; i++)
             {
-                SnapHistory<NentBasic2d> h = Nents.FirstData.Values[i];
+                SnapHistory<NentBasic2d, NentStaticBasic2d> h = Nents.FirstData.Values[i];
 
-                if (h.PrevFlag == SnapHistory<NentBasic2d>.FlagEmpty
-                    || h.PrevFlag == SnapHistory<NentBasic2d>.FlagDeghosted)
+                if (h.PrevFlag == SnapHistory<NentBasic2d, NentStaticBasic2d>.FlagEmpty
+                    || h.PrevFlag == SnapHistory<NentBasic2d, NentStaticBasic2d>.FlagDeghosted)
                     continue; // if the prev flag is empty, this entity does 
                               // not exist yet
                 
-                if (h.CurrentFlag == SnapHistory<NentBasic2d>.FlagGold)
+                if (h.CurrentFlag == SnapHistory<NentBasic2d, NentStaticBasic2d>.FlagGold)
                 {
                     // we have a gold flag, so we can interpolate
                     InterpolateLogic(h, tickms);
@@ -185,20 +185,20 @@ namespace RelaNet.Snapshots.Basic2d
 
             for (int i = 0; i < Nents.FirstData.Count; i++)
             {
-                SnapHistory<NentBasic2d> h = Nents.FirstData.Values[i];
+                SnapHistory<NentBasic2d, NentStaticBasic2d> h = Nents.FirstData.Values[i];
 
-                if (h.PrevFlag != SnapHistory<NentBasic2d>.FlagGold)
+                if (h.PrevFlag != SnapHistory<NentBasic2d, NentStaticBasic2d>.FlagGold)
                     continue; // if the prevflag is not gold,
                               // the entity does not exist at this timestamp
                               // so we don't bother simulating it yet
 
                 // now we advance the snapshot forward to the current point in
                 // time, and then save it
-                if (h.Shots[h.PrevIndex].Id2 == NENT_PLAYEROBJ)
+                if (h.StaticData.Id2 == NENT_PLAYEROBJ)
                 {
                     // store the player entities so we know which entity belongs
                     // to which player
-                    PlayerEntityIds[h.Shots[h.PrevIndex].Id1] = (byte)h.EntityId;
+                    PlayerEntityIds[h.StaticData.Id1] = (byte)h.EntityId;
 
                     // if we have no inputs, do regular advancement
                     h.Shots[h.CurrentIndex] = h.Shots[h.PrevIndex];
@@ -220,9 +220,9 @@ namespace RelaNet.Snapshots.Basic2d
             
             for (int i = 0; i < Nents.SecondData.Count; i++)
             {
-                SnapHistory<NentBasic2d> h = Nents.SecondData.Values[i];
+                SnapHistory<NentBasic2d, NentStaticBasic2d> h = Nents.SecondData.Values[i];
 
-                if (h.PrevFlag != SnapHistory<NentBasic2d>.FlagGold)
+                if (h.PrevFlag != SnapHistory<NentBasic2d, NentStaticBasic2d>.FlagGold)
                     continue;
 
                 // not checking input here because second entities should not
@@ -238,9 +238,9 @@ namespace RelaNet.Snapshots.Basic2d
 
 
 
-        private void AdvanceLogic(SnapHistory<NentBasic2d> h, float delta)
+        private void AdvanceLogic(SnapHistory<NentBasic2d, NentStaticBasic2d> h, float delta)
         {
-            if (h.Shots[h.CurrentIndex].Id2 == NENT_PLAYEROBJ)
+            if (h.StaticData.Id2 == NENT_PLAYEROBJ)
             {
                 // some special considerations for the playerobject
                 if (h.Shots[h.CurrentIndex].Free1 > 0)
@@ -286,7 +286,7 @@ namespace RelaNet.Snapshots.Basic2d
             h.Shots[h.CurrentIndex].Y += h.Shots[h.CurrentIndex].YVel * delta;
         }
 
-        private void InterpolateSnapLogic(SnapHistory<NentBasic2d> h)
+        private void InterpolateSnapLogic(SnapHistory<NentBasic2d, NentStaticBasic2d> h)
         {
             // interpolates from Prev to Next to create Current
             h.Shots[h.CurrentIndex] = h.Shots[h.PrevIndex];
@@ -310,7 +310,7 @@ namespace RelaNet.Snapshots.Basic2d
             h.Shots[h.CurrentIndex].Rot = RMathF.AngleMidpoint(h.Shots[h.CurrentIndex].Rot, h.Shots[h.NextIndex].Rot);
         }
 
-        private void InterpolateLogic(SnapHistory<NentBasic2d> h, float delta)
+        private void InterpolateLogic(SnapHistory<NentBasic2d, NentStaticBasic2d> h, float delta)
         {
             // interpolate from Current forward delta ms
             float tickpercent = delta / NetSnapper.TickMSTarget;
@@ -334,7 +334,7 @@ namespace RelaNet.Snapshots.Basic2d
         }
 
         // returns false if we have no inputs
-        private bool InputChecker(SnapHistory<NentBasic2d> h, byte pid)
+        private bool InputChecker(SnapHistory<NentBasic2d, NentStaticBasic2d> h, byte pid)
         {
             InputBasic2d[] actions = Input.GetPlayerInputs(pid,
                     out int index, out int count,
@@ -401,7 +401,7 @@ namespace RelaNet.Snapshots.Basic2d
             return true;
         }
 
-        private void InputLogic(InputBasic2d action, SnapHistory<NentBasic2d> h, byte pid, float delta)
+        private void InputLogic(InputBasic2d action, SnapHistory<NentBasic2d, NentStaticBasic2d> h, byte pid, float delta)
         {
             // process the inputs for this action 
             h.Shots[h.CurrentIndex].XVel = RMathF.Clamp(action.Horizontal, -1f, 1f) * PlayerSpeed;

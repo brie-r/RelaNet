@@ -1567,6 +1567,10 @@ namespace RelaNet.Snapshots
             send.WriteByte(etype);
             send.WriteByte(nlen);
 
+            //todo; // maybe we could move this into the snapper itself
+            // would that accomplish anything?
+            // well we'd only have one interface call instead of two
+
             snapper.WriteGhostSecond(send);
 
             // when we send the ghost, we need to add it to our handshake memory

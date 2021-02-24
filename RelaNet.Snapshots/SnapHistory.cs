@@ -5,10 +5,14 @@ using System.Text;
 
 namespace RelaNet.Snapshots
 {
-    public class SnapHistory<T> : IPoolable where T : struct
+    public class SnapHistory<T, TStatic> : IPoolable 
+        where T : struct
+        where TStatic : struct
     {
         public ushort EntityId;
         public bool First = false;
+
+        public TStatic StaticData;
 
         public T[] Shots;
         public ushort[] Timestamps;
@@ -46,6 +50,8 @@ namespace RelaNet.Snapshots
         {
             for (int i = 0; i < Flags.Length; i++)
                 Flags[i] = FlagEmpty;
+
+            StaticData = new TStatic();
         }
 
         public int GetPoolIndex()
