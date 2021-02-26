@@ -149,7 +149,7 @@ namespace RelaNet.Snapshots
         private float TickMS = 0;
         public float TickMSTarget { get; private set; } = 20;
 
-        public ISnapSceneChanger SceneChanger = null;
+
         private byte SceneChangeType = 0;
         private ushort SceneChangeCustomId = 0;
         private string SceneChangeTextA = "";
@@ -186,12 +186,15 @@ namespace RelaNet.Snapshots
         private float ClientInputSentTickMS = 0;
         private ISnapInputManager[] InputManagers = new ISnapInputManager[4];
         private int InputManagerCount = 0;
-        
-        // Constructor
-        public NetExecutorSnapper(ISnapSceneChanger sceneChanger)
-        {
-            SceneChanger = sceneChanger;
 
+
+        // callbacks
+        // (changeType, customId, texta, textb)
+        public Action<byte, ushort, string, string> CallbackClientNewScene;
+
+        // Constructor
+        public NetExecutorSnapper()
+        {
             // fill entity map with -1s
             for (int i = 0; i < EntityIdToSnapperIdFirstClass.Length; i++)
                 EntityIdToSnapperIdFirstClass[i] = -1;
@@ -1922,8 +1925,8 @@ namespace RelaNet.Snapshots
                 Snappers[i].ClearEntities();
 
             // inform our scene changer, if we have one
-            if (SceneChanger != null)
-                SceneChanger.ClientNewScene(SceneChangeType, SceneChangeCustomId,
+            if (CallbackClientNewScene != null)
+                CallbackClientNewScene(SceneChangeType, SceneChangeCustomId,
                     SceneChangeTextA, SceneChangeTextB);
 
             return c;
@@ -1940,8 +1943,8 @@ namespace RelaNet.Snapshots
             SceneChangeTextB = Bytes.ReadString(receipt.Data, c, out tlen); c += tlen;
 
             // inform our scene changer, if we have one
-            if (SceneChanger != null)
-                SceneChanger.ClientNewScene(SceneChangeType, SceneChangeCustomId,
+            if (CallbackClientNewScene != null)
+                CallbackClientNewScene(SceneChangeType, SceneChangeCustomId,
                     SceneChangeTextA, SceneChangeTextB);
 
             return c;

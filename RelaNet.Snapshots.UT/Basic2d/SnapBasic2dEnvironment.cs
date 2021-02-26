@@ -27,7 +27,7 @@ namespace RelaNet.Snapshots.UT.Basic2d
             Tenv = TestEnvironment.AutoConnected(clientCount,
                 (serv) =>
                 {
-                    NetExecutorSnapper netSnap = new NetExecutorSnapper(null);
+                    NetExecutorSnapper netSnap = new NetExecutorSnapper();
                     NetSnappers.Add(netSnap);
                     serv.AddExecutor(netSnap);
 
